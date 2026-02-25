@@ -92,10 +92,25 @@ class ScreenTextAccessibilityService : AccessibilityService() {
                 Toast.LENGTH_SHORT
             ).show()
 
-            val extractedText = try {
+            // ブラウザの場合はURLを先に取得
+            val url = try {
+                val windowList = windows ?: emptyList()
+                textExtractor.extractBrowserUrl(windowList)
+            } catch (_: Exception) {
+                null
+            }
+
+            val bodyText = try {
                 extractFullPageText()
             } catch (_: Exception) {
                 ""
+            }
+
+            // URLがあれば先頭に付ける
+            val extractedText = if (url != null && bodyText.isNotBlank()) {
+                "$url\n\n$bodyText"
+            } else {
+                bodyText
             }
 
             // フローティングボタンを再表示
@@ -229,14 +244,12 @@ class ScreenTextAccessibilityService : AccessibilityService() {
             return textExtractor.extractFromWindows(windowList)
         }
 
-        // 先頭までスクロールバック（回数を記録して後で復元）
-        var scrollsToTop = 0
+        // 先頭までスクロールバック
         for (i in 0 until maxScrolls) {
             val scrolled = scrollableNode.performAction(
                 AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
             )
             if (!scrolled) break
-            scrollsToTop++
             delay(10)
         }
 
@@ -246,14 +259,12 @@ class ScreenTextAccessibilityService : AccessibilityService() {
         allLines.addAll(topLines)
 
         // 下方向にスクロールしながら収集
-        var totalForwardScrolls = 0
-        var emptyScrollCount = 0 // 新テキストなしの連続回数
+        var emptyScrollCount = 0
         for (i in 0 until maxScrolls) {
             val scrolled = scrollableNode.performAction(
                 AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
             )
-            if (!scrolled) break // スクロール不可 = 本当に末端
-            totalForwardScrolls++
+            if (!scrolled) break
 
             delay(60) // UI描画を確実に待つ
 
@@ -271,16 +282,9 @@ class ScreenTextAccessibilityService : AccessibilityService() {
             }
         }
 
-        // 元の位置に戻す（復元は待機不要で最速）
-        val scrollsBack = totalForwardScrolls - scrollsToTop
-        if (scrollsBack > 0) {
-            for (i in 0 until scrollsBack) {
-                if (!scrollableNode.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)) break
-            }
-        } else if (scrollsBack < 0) {
-            for (i in 0 until -scrollsBack) {
-                if (!scrollableNode.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) break
-            }
+        // 必ず一番上に戻す
+        for (i in 0 until maxScrolls) {
+            if (!scrollableNode.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)) break
         }
 
         return allLines.joinToString("\n")

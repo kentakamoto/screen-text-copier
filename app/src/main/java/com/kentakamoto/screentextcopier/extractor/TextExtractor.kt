@@ -71,6 +71,53 @@ class TextExtractor {
     }
 
     /**
+     * ブラウザのアドレスバーからURLを取得する
+     * ブラウザでなければnullを返す
+     */
+    fun extractBrowserUrl(windows: List<AccessibilityWindowInfo>): String? {
+        val targetWindows = windows.filter { window ->
+            window.type == AccessibilityWindowInfo.TYPE_APPLICATION
+        }
+        for (window in targetWindows) {
+            val root = window.root ?: continue
+            val url = findUrlBarText(root)
+            if (url != null) return url
+        }
+        return null
+    }
+
+    private fun findUrlBarText(node: AccessibilityNodeInfo): String? {
+        val className = node.className?.toString() ?: ""
+        val viewId = node.viewIdResourceName ?: ""
+
+        // Chrome / Edge / 各ブラウザのURL欄を検出
+        val isUrlBar = viewId.contains("url_bar") ||
+            viewId.contains("search_box_text") ||
+            viewId.contains("addressbar") ||
+            viewId.contains("location_bar") ||
+            viewId.contains("url_field") ||
+            viewId.contains("mozac_browser_toolbar_url_view")
+
+        if (isUrlBar) {
+            val text = node.text?.toString()?.trim()
+            if (!text.isNullOrBlank()) {
+                // httpが付いていなければ付ける
+                return if (text.startsWith("http")) text else "https://$text"
+            }
+        }
+
+        // 子ノードを再帰探索
+        for (i in 0 until node.childCount) {
+            val child = try { node.getChild(i) } catch (_: Exception) { null }
+            if (child != null) {
+                val result = findUrlBarText(child)
+                if (result != null) return result
+            }
+        }
+        return null
+    }
+
+    /**
      * ルートノードからスクロール可能なノードを探す
      */
     fun findScrollableNode(windows: List<AccessibilityWindowInfo>): AccessibilityNodeInfo? {
