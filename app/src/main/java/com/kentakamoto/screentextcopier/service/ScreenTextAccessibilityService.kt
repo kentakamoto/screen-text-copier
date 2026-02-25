@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.os.Bundle
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -40,7 +41,8 @@ class ScreenTextAccessibilityService : AccessibilityService() {
         floatingButtonManager = FloatingButtonManager(
             context = this,
             windowManager = getSystemService(WINDOW_SERVICE) as WindowManager,
-            onButtonClick = ::onFloatingButtonClicked
+            onButtonClick = ::onFloatingButtonClicked,
+            onButtonLongPress = ::onFloatingButtonLongPressed
         )
         floatingButtonManager.show()
 
@@ -179,6 +181,50 @@ class ScreenTextAccessibilityService : AccessibilityService() {
         }
 
         return allLines.joinToString("\n")
+    }
+
+    /**
+     * 長押し: フォーカス中のテキスト欄を空にする
+     */
+    private fun onFloatingButtonLongPressed() {
+        val focusedNode = findFocusedEditableNode()
+        if (focusedNode != null) {
+            val args = Bundle()
+            args.putCharSequence(
+                AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                ""
+            )
+            focusedNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+            Toast.makeText(this, "テキストをクリアしました", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "テキスト欄が見つかりません", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * 現在フォーカスされている編集可能なノードを探す
+     */
+    private fun findFocusedEditableNode(): AccessibilityNodeInfo? {
+        // まずINPUT_FOCUS_CLEARを試す
+        val focused = rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        if (focused != null && focused.isEditable) return focused
+
+        // フォーカスがない場合、画面上の編集可能なノードを探す
+        val root = rootInActiveWindow ?: return null
+        return findEditableNode(root)
+    }
+
+    private fun findEditableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        if (node.isEditable && node.isFocused) return node
+        if (node.isEditable) return node
+        for (i in 0 until node.childCount) {
+            val child = try { node.getChild(i) } catch (_: Exception) { null }
+            if (child != null) {
+                val result = findEditableNode(child)
+                if (result != null) return result
+            }
+        }
+        return null
     }
 
     private fun copyToClipboard(text: String) {

@@ -23,6 +23,7 @@ class FloatingButtonManager(
     private val context: Context,
     private val windowManager: WindowManager,
     private val onButtonClick: () -> Unit,
+    private val onButtonLongPress: () -> Unit = {},
 ) {
     private var floatingView: View? = null
     private var layoutParams: WindowManager.LayoutParams? = null
@@ -33,6 +34,12 @@ class FloatingButtonManager(
     private var initialX = 0
     private var initialY = 0
     private var isDragging = false
+    private var isLongPress = false
+    private var touchDownTime = 0L
+
+    companion object {
+        private const val LONG_PRESS_THRESHOLD_MS = 500L
+    }
 
     fun show() {
         if (floatingView != null) return
@@ -101,6 +108,8 @@ class FloatingButtonManager(
                     initialX = params.x
                     initialY = params.y
                     isDragging = false
+                    isLongPress = false
+                    touchDownTime = System.currentTimeMillis()
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -117,7 +126,14 @@ class FloatingButtonManager(
                 }
                 MotionEvent.ACTION_UP -> {
                     if (!isDragging) {
-                        onButtonClick()
+                        val pressDuration = System.currentTimeMillis() - touchDownTime
+                        if (pressDuration >= LONG_PRESS_THRESHOLD_MS) {
+                            // 長押し → テキスト欄クリア
+                            onButtonLongPress()
+                        } else {
+                            // 短いタップ → 全文コピー
+                            onButtonClick()
+                        }
                     }
                     saveButtonPosition(params.x, params.y)
                     true
