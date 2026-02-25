@@ -121,60 +121,140 @@ class ScreenTextAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * 自動スクロールしてページ全体のテキストを収集する
+     * ページ全体のテキストを取得する
+     * 1. まず全選択+コピーを試みる（高速）
+     * 2. 失敗した場合、自動スクロールで収集（確実）
      */
     private suspend fun extractFullPageText(): String {
-        val allLines = LinkedHashSet<String>()
-        val maxScrolls = 50 // 無限スクロール対策の上限
+        // 方法1: 全選択+コピー（テキスト選択可能なページ用・高速）
+        val selectAllResult = trySelectAllCopy()
+        if (selectAllResult.isNotBlank()) return selectAllResult
 
-        // 1. まず現在の画面のテキストを収集
+        // 方法2: 自動スクロールで収集（フォールバック）
+        return extractByScrolling()
+    }
+
+    /**
+     * 全選択→コピーでテキスト取得を試みる（高速パス）
+     * WebView等のテキスト選択可能なコンテンツで動作する
+     */
+    private suspend fun trySelectAllCopy(): String {
+        val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+
+        // クリップボードを一旦クリア
+        val oldClip = clipboard.primaryClip
+        clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
+
+        val root = rootInActiveWindow ?: return ""
+
+        // WebViewや選択可能なコンテンツノードを探す
+        val targetNode = findSelectableContentNode(root) ?: return ""
+
+        // ACTION_SET_SELECTION で全範囲を選択
+        val selectArgs = Bundle().apply {
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 0)
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, Int.MAX_VALUE)
+        }
+        val selected = targetNode.performAction(
+            AccessibilityNodeInfo.ACTION_SET_SELECTION, selectArgs
+        )
+        if (!selected) {
+            // 元のクリップボードを復元
+            if (oldClip != null) clipboard.setPrimaryClip(oldClip)
+            return ""
+        }
+
+        delay(50)
+
+        val copied = targetNode.performAction(AccessibilityNodeInfo.ACTION_COPY)
+        if (!copied) {
+            targetNode.performAction(AccessibilityNodeInfo.ACTION_CLEAR_SELECTION)
+            if (oldClip != null) clipboard.setPrimaryClip(oldClip)
+            return ""
+        }
+
+        delay(50)
+
+        // コピー結果を取得
+        val clip = clipboard.primaryClip
+        val text = if (clip != null && clip.itemCount > 0) {
+            clip.getItemAt(0).text?.toString() ?: ""
+        } else {
+            ""
+        }
+
+        // 選択状態を解除
+        targetNode.performAction(AccessibilityNodeInfo.ACTION_CLEAR_SELECTION)
+
+        // 取得失敗なら元のクリップボードを復元
+        if (text.isBlank() && oldClip != null) {
+            clipboard.setPrimaryClip(oldClip)
+        }
+
+        return text.trim()
+    }
+
+    /**
+     * テキスト選択可能なコンテンツノードを探す（WebView等）
+     */
+    private fun findSelectableContentNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val className = node.className?.toString() ?: ""
+        if (className.contains("WebView")) return node
+
+        for (i in 0 until node.childCount) {
+            val child = try { node.getChild(i) } catch (_: Exception) { null }
+            if (child != null) {
+                val result = findSelectableContentNode(child)
+                if (result != null) return result
+            }
+        }
+        return null
+    }
+
+    /**
+     * 自動スクロールでページ全体のテキストを収集する（フォールバック）
+     */
+    private suspend fun extractByScrolling(): String {
+        val allLines = LinkedHashSet<String>()
+        val maxScrolls = 80
+
         val windowList = windows ?: emptyList()
         if (windowList.isEmpty()) {
             return textExtractor.extractFromRoot(rootInActiveWindow)
         }
 
-        val initialLines = textExtractor.extractVisibleLines(windowList)
-        allLines.addAll(initialLines)
-
-        // 2. スクロール可能なノードを探す
+        // スクロール可能なノードを探す
         val scrollableNode = textExtractor.findScrollableNode(windowList)
         if (scrollableNode == null) {
-            // スクロールできない画面 → 現在の画面のテキストだけ返す
             return textExtractor.extractFromWindows(windowList)
         }
 
-        // 3. ページ先頭までスクロールバック
-        var scrolledToTop = false
+        // ページ先頭までスクロールバック
         for (i in 0 until maxScrolls) {
             val scrolled = scrollableNode.performAction(
                 AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
             )
-            if (!scrolled) {
-                scrolledToTop = true
-                break
-            }
-            delay(200)
+            if (!scrolled) break
+            delay(80)
         }
 
-        // 4. 先頭から改めてテキスト収集
-        delay(300)
-        allLines.clear()
+        // 先頭から改めてテキスト収集
+        delay(150)
         val topLines = textExtractor.extractVisibleLines(windows ?: emptyList())
         allLines.addAll(topLines)
 
-        // 5. 下方向にスクロールしながらテキストを収集
+        // 下方向にスクロールしながらテキストを収集
         for (i in 0 until maxScrolls) {
             val scrolled = scrollableNode.performAction(
                 AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
             )
-            if (!scrolled) break // これ以上スクロールできない
+            if (!scrolled) break
 
-            delay(400) // UIの更新を待つ
+            delay(150) // UI更新待ち（高速化）
 
             val currentWindows = windows ?: break
             val newLines = textExtractor.extractVisibleLines(currentWindows)
 
-            // 新しいテキストがなければ終了
             val previousSize = allLines.size
             allLines.addAll(newLines)
             if (allLines.size == previousSize) break
