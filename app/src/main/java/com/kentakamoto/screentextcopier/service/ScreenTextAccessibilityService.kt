@@ -213,44 +213,48 @@ class ScreenTextAccessibilityService : AccessibilityService() {
 
     /**
      * 自動スクロールでページ全体のテキストを収集する（フォールバック）
+     * 収集後は元のスクロール位置に戻す
      */
     private suspend fun extractByScrolling(): String {
         val allLines = LinkedHashSet<String>()
-        val maxScrolls = 80
+        val maxScrolls = 100
 
         val windowList = windows ?: emptyList()
         if (windowList.isEmpty()) {
             return textExtractor.extractFromRoot(rootInActiveWindow)
         }
 
-        // スクロール可能なノードを探す
         val scrollableNode = textExtractor.findScrollableNode(windowList)
         if (scrollableNode == null) {
             return textExtractor.extractFromWindows(windowList)
         }
 
-        // ページ先頭までスクロールバック
+        // 先頭までスクロールバック（回数を記録して後で復元）
+        var scrollsToTop = 0
         for (i in 0 until maxScrolls) {
             val scrolled = scrollableNode.performAction(
                 AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
             )
             if (!scrolled) break
-            delay(80)
+            scrollsToTop++
+            delay(30)
         }
 
-        // 先頭から改めてテキスト収集
-        delay(150)
+        // 先頭からテキスト収集
+        delay(80)
         val topLines = textExtractor.extractVisibleLines(windows ?: emptyList())
         allLines.addAll(topLines)
 
-        // 下方向にスクロールしながらテキストを収集
+        // 下方向にスクロールしながら収集
+        var totalForwardScrolls = 0
         for (i in 0 until maxScrolls) {
             val scrolled = scrollableNode.performAction(
                 AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
             )
             if (!scrolled) break
+            totalForwardScrolls++
 
-            delay(150) // UI更新待ち（高速化）
+            delay(50)
 
             val currentWindows = windows ?: break
             val newLines = textExtractor.extractVisibleLines(currentWindows)
@@ -258,6 +262,26 @@ class ScreenTextAccessibilityService : AccessibilityService() {
             val previousSize = allLines.size
             allLines.addAll(newLines)
             if (allLines.size == previousSize) break
+        }
+
+        // 元の位置に戻す
+        val scrollsBack = totalForwardScrolls - scrollsToTop
+        if (scrollsBack > 0) {
+            for (i in 0 until scrollsBack) {
+                val scrolled = scrollableNode.performAction(
+                    AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+                )
+                if (!scrolled) break
+                delay(20)
+            }
+        } else if (scrollsBack < 0) {
+            for (i in 0 until -scrollsBack) {
+                val scrolled = scrollableNode.performAction(
+                    AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+                )
+                if (!scrolled) break
+                delay(20)
+            }
         }
 
         return allLines.joinToString("\n")
