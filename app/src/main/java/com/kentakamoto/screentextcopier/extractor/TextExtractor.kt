@@ -7,7 +7,7 @@ import android.view.accessibility.AccessibilityWindowInfo
 class TextExtractor {
 
     /**
-     * 複数ウィンドウからテキストを抽出するメインエントリポイント
+     * 複数ウィンドウからテキストを抽出するメインエントリポイント（現在の画面のみ）
      */
     fun extractFromWindows(windows: List<AccessibilityWindowInfo>): String {
         val targetWindows = windows.filter { window ->
@@ -40,6 +40,61 @@ class TextExtractor {
             // ノード取得に失敗した場合は空文字列を返す
         }
         return buildFinalText(allNodes)
+    }
+
+    /**
+     * 現在の画面からテキスト行のリストを抽出（スクロール収集用）
+     * 順序を維持したまま個別の行として返す
+     */
+    fun extractVisibleLines(windows: List<AccessibilityWindowInfo>): List<String> {
+        val targetWindows = windows.filter { window ->
+            window.type == AccessibilityWindowInfo.TYPE_APPLICATION
+        }
+
+        val allNodes = mutableListOf<TextNode>()
+
+        for (window in targetWindows) {
+            val root = window.root ?: continue
+            try {
+                collectTextNodes(root, allNodes)
+            } catch (_: Exception) {
+                // skip
+            }
+        }
+
+        if (allNodes.isEmpty()) return emptyList()
+
+        val sorted = allNodes.sortedWith(compareBy({ it.bounds.top }, { it.bounds.left }))
+        val deduplicated = deduplicateNodes(sorted)
+
+        return deduplicated.map { it.text }
+    }
+
+    /**
+     * ルートノードからスクロール可能なノードを探す
+     */
+    fun findScrollableNode(windows: List<AccessibilityWindowInfo>): AccessibilityNodeInfo? {
+        val targetWindows = windows.filter { window ->
+            window.type == AccessibilityWindowInfo.TYPE_APPLICATION
+        }
+        for (window in targetWindows) {
+            val root = window.root ?: continue
+            val scrollable = findScrollableRecursive(root)
+            if (scrollable != null) return scrollable
+        }
+        return null
+    }
+
+    private fun findScrollableRecursive(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        if (node.isScrollable) return node
+        for (i in 0 until node.childCount) {
+            val child = try { node.getChild(i) } catch (_: Exception) { null }
+            if (child != null) {
+                val result = findScrollableRecursive(child)
+                if (result != null) return result
+            }
+        }
+        return null
     }
 
     /**
