@@ -241,27 +241,34 @@ class ScreenTextAccessibilityService : AccessibilityService() {
         }
 
         // 先頭からテキスト収集
-        delay(30)
+        delay(60)
         val topLines = textExtractor.extractVisibleLines(windows ?: emptyList())
         allLines.addAll(topLines)
 
         // 下方向にスクロールしながら収集
         var totalForwardScrolls = 0
+        var emptyScrollCount = 0 // 新テキストなしの連続回数
         for (i in 0 until maxScrolls) {
             val scrolled = scrollableNode.performAction(
                 AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
             )
-            if (!scrolled) break
+            if (!scrolled) break // スクロール不可 = 本当に末端
             totalForwardScrolls++
 
-            delay(20) // UI更新の最小待機
+            delay(60) // UI描画を確実に待つ
 
             val currentWindows = windows ?: break
             val newLines = textExtractor.extractVisibleLines(currentWindows)
 
             val previousSize = allLines.size
             allLines.addAll(newLines)
-            if (allLines.size == previousSize) break
+            if (allLines.size == previousSize) {
+                emptyScrollCount++
+                // 3回連続で新テキストなしなら停止
+                if (emptyScrollCount >= 3) break
+            } else {
+                emptyScrollCount = 0
+            }
         }
 
         // 元の位置に戻す（復元は待機不要で最速）
