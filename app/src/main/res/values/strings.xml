@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Screen Text Copier</string>
+    <string name="accessibility_service_label">画面テキストコピー</string>
+    <string name="accessibility_service_description">画面に表示されているテキストを読み取り、クリップボードにコピーまたは他のアプリと共有します。フローティングボタンをタップするだけで、どのアプリでもテキストを取得できます。</string>
+    <string name="copy_screen_text">画面テキストをコピー</string>
+    <string name="copied_to_clipboard">テキストをコピーしました</string>
+    <string name="no_text_found">テキストが見つかりませんでした</string>
+    <string name="share_text">テキストを共有</string>
+    <string name="service_running">サービス稼働中</string>
+    <string name="service_stopped">サービス停止中</string>
+    <string name="enable_accessibility_service">アクセシビリティサービスを有効にする</string>
+    <string name="settings">設定</string>
+    <string name="copy_mode_label">テキスト取得後の動作</string>
+    <string name="clipboard_mode">クリップボード</string>
+    <string name="share_mode">シェアメニュー</string>
+    <string name="button_appearance">フローティングボタン</string>
+    <string name="button_opacity">透明度</string>
+    <string name="button_size">サイズ</string>
+</resources>

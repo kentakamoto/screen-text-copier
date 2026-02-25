@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content">
+
+    <ImageButton
+        android:id="@+id/floating_btn"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:background="@drawable/floating_btn_background"
+        android:src="@drawable/ic_content_copy"
+        android:contentDescription="@string/copy_screen_text"
+        android:elevation="8dp"
+        android:alpha="0.8"
+        android:padding="14dp"
+        android:scaleType="fitCenter" />
+
+</FrameLayout>
