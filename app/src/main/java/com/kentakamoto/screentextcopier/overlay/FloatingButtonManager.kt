@@ -3,6 +3,8 @@ package com.kentakamoto.screentextcopier.overlay
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.PixelFormat
+import android.os.Handler
+import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -34,8 +36,9 @@ class FloatingButtonManager(
     private var initialX = 0
     private var initialY = 0
     private var isDragging = false
-    private var isLongPress = false
-    private var touchDownTime = 0L
+    private var isLongPressTriggered = false
+    private val handler = Handler(Looper.getMainLooper())
+    private var longPressRunnable: Runnable? = null
 
     companion object {
         private const val LONG_PRESS_THRESHOLD_MS = 500L
@@ -108,14 +111,26 @@ class FloatingButtonManager(
                     initialX = params.x
                     initialY = params.y
                     isDragging = false
-                    isLongPress = false
-                    touchDownTime = System.currentTimeMillis()
+                    isLongPressTriggered = false
+
+                    // 0.5秒後に長押し発火するタイマーをセット
+                    longPressRunnable = Runnable {
+                        if (!isDragging) {
+                            isLongPressTriggered = true
+                            onButtonLongPress()
+                        }
+                    }
+                    handler.postDelayed(longPressRunnable!!, LONG_PRESS_THRESHOLD_MS)
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (event.rawX - initialTouchX).toInt()
                     val dy = (event.rawY - initialTouchY).toInt()
-                    if (abs(dx) > 5 || abs(dy) > 5) isDragging = true
+                    if (abs(dx) > 5 || abs(dy) > 5) {
+                        isDragging = true
+                        // ドラッグ開始したら長押しタイマーをキャンセル
+                        longPressRunnable?.let { handler.removeCallbacks(it) }
+                    }
                     if (isDragging) {
                         params.x = initialX + dx
                         params.y = initialY + dy
@@ -125,15 +140,12 @@ class FloatingButtonManager(
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (!isDragging) {
-                        val pressDuration = System.currentTimeMillis() - touchDownTime
-                        if (pressDuration >= LONG_PRESS_THRESHOLD_MS) {
-                            // 長押し → テキスト欄クリア
-                            onButtonLongPress()
-                        } else {
-                            // 短いタップ → 全文コピー
-                            onButtonClick()
-                        }
+                    // 長押しタイマーをキャンセル（まだ発火してなければ）
+                    longPressRunnable?.let { handler.removeCallbacks(it) }
+
+                    if (!isDragging && !isLongPressTriggered) {
+                        // 短いタップ → 全文コピー
+                        onButtonClick()
                     }
                     saveButtonPosition(params.x, params.y)
                     true

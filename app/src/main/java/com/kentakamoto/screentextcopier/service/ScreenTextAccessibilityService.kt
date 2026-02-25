@@ -237,11 +237,11 @@ class ScreenTextAccessibilityService : AccessibilityService() {
             )
             if (!scrolled) break
             scrollsToTop++
-            delay(30)
+            delay(10)
         }
 
         // 先頭からテキスト収集
-        delay(80)
+        delay(30)
         val topLines = textExtractor.extractVisibleLines(windows ?: emptyList())
         allLines.addAll(topLines)
 
@@ -254,7 +254,7 @@ class ScreenTextAccessibilityService : AccessibilityService() {
             if (!scrolled) break
             totalForwardScrolls++
 
-            delay(50)
+            delay(20) // UI更新の最小待機
 
             val currentWindows = windows ?: break
             val newLines = textExtractor.extractVisibleLines(currentWindows)
@@ -264,23 +264,15 @@ class ScreenTextAccessibilityService : AccessibilityService() {
             if (allLines.size == previousSize) break
         }
 
-        // 元の位置に戻す
+        // 元の位置に戻す（復元は待機不要で最速）
         val scrollsBack = totalForwardScrolls - scrollsToTop
         if (scrollsBack > 0) {
             for (i in 0 until scrollsBack) {
-                val scrolled = scrollableNode.performAction(
-                    AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
-                )
-                if (!scrolled) break
-                delay(20)
+                if (!scrollableNode.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)) break
             }
         } else if (scrollsBack < 0) {
             for (i in 0 until -scrollsBack) {
-                val scrolled = scrollableNode.performAction(
-                    AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
-                )
-                if (!scrolled) break
-                delay(20)
+                if (!scrollableNode.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) break
             }
         }
 
