@@ -144,6 +144,9 @@ class ScreenTextAccessibilityService : AccessibilityService() {
      * 3. その他のアプリは自動スクロールで収集（確実）
      */
     private suspend fun extractFullPageText(isBrowser: Boolean = false): String {
+        // まず一番上にスクロールしてから取得を開始
+        scrollToTop()
+
         // 方法1: 全選択+コピー（テキスト選択可能なページ用・高速）
         val selectAllResult = trySelectAllCopy()
         if (selectAllResult.isNotBlank()) return selectAllResult
@@ -156,6 +159,22 @@ class ScreenTextAccessibilityService : AccessibilityService() {
 
         // 方法2: 自動スクロールで収集（フォールバック）
         return extractByScrolling()
+    }
+
+    /**
+     * 画面を一番上までスクロールする
+     */
+    private suspend fun scrollToTop() {
+        val windowList = windows ?: return
+        val scrollableNode = textExtractor.findScrollableNode(windowList) ?: return
+        for (i in 0 until 100) {
+            val scrolled = scrollableNode.performAction(
+                AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+            )
+            if (!scrolled) break
+            delay(10)
+        }
+        delay(60)
     }
 
     /**
@@ -237,7 +256,8 @@ class ScreenTextAccessibilityService : AccessibilityService() {
 
     /**
      * 自動スクロールでページ全体のテキストを収集する（フォールバック）
-     * 収集後は元のスクロール位置に戻す
+     * 収集後は一番上に戻す
+     * ※ scrollToTop() で既に先頭に移動済みの前提
      */
     private suspend fun extractByScrolling(): String {
         val allLines = LinkedHashSet<String>()
@@ -251,15 +271,6 @@ class ScreenTextAccessibilityService : AccessibilityService() {
         val scrollableNode = textExtractor.findScrollableNode(windowList)
         if (scrollableNode == null) {
             return textExtractor.extractFromWindows(windowList)
-        }
-
-        // 先頭までスクロールバック
-        for (i in 0 until maxScrolls) {
-            val scrolled = scrollableNode.performAction(
-                AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
-            )
-            if (!scrolled) break
-            delay(10)
         }
 
         // 先頭からテキスト収集
