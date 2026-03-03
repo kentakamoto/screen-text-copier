@@ -231,7 +231,7 @@ class ScreenTextAccessibilityService : AccessibilityService() {
      * 収集後は元のスクロール位置に戻す
      */
     private suspend fun extractByScrolling(): String {
-        val allLines = LinkedHashSet<String>()
+        val allLines = mutableListOf<String>()
         val maxScrolls = 100
 
         val windowList = windows ?: emptyList()
@@ -271,14 +271,16 @@ class ScreenTextAccessibilityService : AccessibilityService() {
             val currentWindows = windows ?: break
             val newLines = textExtractor.extractVisibleLines(currentWindows)
 
-            val previousSize = allLines.size
-            allLines.addAll(newLines)
-            if (allLines.size == previousSize) {
+            // オーバーラップ検出: allLinesの末尾とnewLinesの先頭の一致部分を見つける
+            val newPortion = findNonOverlappingPortion(allLines, newLines)
+
+            if (newPortion.isEmpty()) {
                 emptyScrollCount++
                 // 3回連続で新テキストなしなら停止
                 if (emptyScrollCount >= 3) break
             } else {
                 emptyScrollCount = 0
+                allLines.addAll(newPortion)
             }
         }
 
@@ -288,6 +290,34 @@ class ScreenTextAccessibilityService : AccessibilityService() {
         }
 
         return allLines.joinToString("\n")
+    }
+
+    /**
+     * 既存行リストと新しい行リストのオーバーラップを検出し、
+     * 新しい部分のみを返す。
+     * チャットアプリ等で同じテキストが複数回出現しても正しく処理する。
+     */
+    private fun findNonOverlappingPortion(
+        existing: List<String>,
+        newLines: List<String>
+    ): List<String> {
+        if (existing.isEmpty()) return newLines
+        if (newLines.isEmpty()) return emptyList()
+
+        // existingの末尾とnewLinesの先頭で最長一致を探す
+        // 最大でnewLines全体がオーバーラップする可能性がある
+        val maxOverlap = minOf(existing.size, newLines.size)
+
+        for (overlapSize in maxOverlap downTo 1) {
+            val existingTail = existing.subList(existing.size - overlapSize, existing.size)
+            val newHead = newLines.subList(0, overlapSize)
+            if (existingTail == newHead) {
+                return newLines.subList(overlapSize, newLines.size)
+            }
+        }
+
+        // オーバーラップなし → 全部新しい行
+        return newLines
     }
 
     /**

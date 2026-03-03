@@ -200,11 +200,23 @@ class TextExtractor {
      */
     private fun isSystemUiLabel(text: String): Boolean {
         val systemLabels = setOf(
+            // Android システムUI
             "Back", "Home", "Recents", "Overview",
             "戻る", "ホーム", "最近", "概要",
             "Navigate up", "More options", "Search",
             "ナビゲートアップ", "その他のオプション", "検索",
-            "Close", "閉じる", "Open", "開く"
+            "Close", "閉じる", "Open", "開く",
+            // チャットUI共通（Claude, Gemini等）
+            "Copy code", "Copy", "Edit", "Retry", "Delete",
+            "コピー", "編集", "再試行", "削除",
+            "Good response", "Bad response",
+            "Thumb up", "Thumb down", "Like", "Dislike",
+            "いいね", "よくないね",
+            "Send", "送信", "Stop", "停止",
+            "New chat", "新しいチャット",
+            "Share", "共有", "Menu", "メニュー",
+            "Attach", "添付",
+            "More", "もっと見る"
         )
         return systemLabels.contains(text)
     }
@@ -223,19 +235,14 @@ class TextExtractor {
 
         return buildString {
             var lastBottom = -1
-            var lastText = ""
 
             for (node in deduplicated) {
-                // 連続する完全一致テキストをスキップ
-                if (node.text == lastText) continue
-
                 val isNewLine = lastBottom == -1 || node.bounds.top > lastBottom - 5
                 if (isNotEmpty()) {
                     if (isNewLine) append("\n") else append(" ")
                 }
                 append(node.text)
                 lastBottom = node.bounds.bottom
-                lastText = node.text
             }
         }
     }
